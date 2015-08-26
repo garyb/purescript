@@ -1,8 +1,5 @@
 sudo: false
 env:
-  - GHCVER=7.8.3 COVERAGE_SUITE=tests
-  - GHCVER=7.8.3 COVERAGE_SUITE=psci-tests
-  - GHCVER=7.6.3
   - GHCVER=7.10.1
 before_install:
   - export PATH="/opt/ghc/$GHCVER/bin:$PATH"
@@ -43,8 +40,6 @@ addons:
       - hvr-ghc
     packages:
       - cabal-install-1.22
-      - ghc-7.6.3
-      - ghc-7.8.3
       - ghc-7.10.1
       - happy-1.19.5
       - alex-3.1.4
