@@ -36,7 +36,7 @@ import Control.Monad.Trans.Except (runExceptT)
 import Control.Monad.Trans.Maybe (MaybeT(..), runMaybeT)
 import Control.Monad.Trans.State.Strict
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Writer (runWriter)
+import Control.Monad.Writer.Strict (runWriter)
 import qualified Control.Monad.Trans.State.Lazy as L
 
 import Options.Applicative as Opts
@@ -485,7 +485,7 @@ whenFileExists :: FilePath -> (FilePath -> PSCI ()) -> PSCI ()
 whenFileExists filePath f = do
   absPath <- psciIO $ expandTilde filePath
   exists <- psciIO $ doesFileExist absPath
-  if exists 
+  if exists
     then f absPath
     else PSCI . outputStrLn $ "Couldn't locate: " ++ filePath
 

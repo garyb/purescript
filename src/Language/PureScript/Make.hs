@@ -28,7 +28,7 @@ module Language.PureScript.Make
   , SupplyVar()
   , Externs()
   , make
-  
+
   -- * Implementation of Make API using files on disk
   , Make(..)
   , runMake
@@ -41,7 +41,7 @@ import Control.Monad
 import Control.Monad.Error.Class (MonadError(..))
 import Control.Monad.Trans.Except
 import Control.Monad.Reader
-import Control.Monad.Writer
+import Control.Monad.Writer.Strict
 import Control.Monad.Supply
 import Control.Monad.Supply.Class (fresh)
 

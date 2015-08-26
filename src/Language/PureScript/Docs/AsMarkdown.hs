@@ -4,7 +4,7 @@ module Language.PureScript.Docs.AsMarkdown (
   renderModulesAsMarkdown
 ) where
 
-import Control.Monad.Writer hiding (First)
+import Control.Monad.Writer.Strict hiding (First)
 import Data.Foldable (for_)
 import Data.List (partition)
 

@@ -21,7 +21,7 @@ import Data.List (intercalate, find)
 import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.Map as M
 
-import Control.Monad.Writer
+import Control.Monad.Writer.Strict
 
 import Language.PureScript.AST
 import Language.PureScript.Comments

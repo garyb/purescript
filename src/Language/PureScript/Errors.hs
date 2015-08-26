@@ -28,7 +28,7 @@ import qualified Data.Map as M
 
 import Control.Monad
 import Control.Monad.Unify
-import Control.Monad.Writer
+import Control.Monad.Writer.Strict
 import Control.Monad.Error.Class (MonadError(..))
 import Control.Applicative ((<$>), (<*>), Applicative, pure)
 import Control.Monad.Trans.State.Lazy

@@ -18,7 +18,7 @@ module Main where
 import Control.Applicative
 import Control.Arrow (first, second)
 import Control.Category ((>>>))
-import Control.Monad.Writer
+import Control.Monad.Writer.Strict
 import Data.Function (on)
 import Data.List
 import Data.Maybe (fromMaybe)
