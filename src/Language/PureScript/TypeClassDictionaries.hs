@@ -10,6 +10,7 @@ import Control.DeepSeq (NFData)
 import Data.Monoid ((<>))
 import Data.Text (Text, pack)
 
+import Language.PureScript.AST.Ann
 import Language.PureScript.Names
 import Language.PureScript.Types
 
@@ -25,9 +26,9 @@ data TypeClassDictionaryInScope v
     -- | The name of the type class to which this type class instance applies
     , tcdClassName :: Qualified (ProperName 'ClassName)
     -- | The types to which this type class instance applies
-    , tcdInstanceTypes :: [Type]
+    , tcdInstanceTypes :: [Type TypeAnn]
     -- | Type class dependencies which must be satisfied to construct this dictionary
-    , tcdDependencies :: Maybe [Constraint]
+    , tcdDependencies :: Maybe [Constraint TypeAnn]
     }
     deriving (Show, Functor, Foldable, Traversable, Generic)
 
