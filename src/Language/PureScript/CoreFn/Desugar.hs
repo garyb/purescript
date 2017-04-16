@@ -82,7 +82,7 @@ moduleToCoreFn env (A.Module _ coms mn decls (Just exps)) =
   declToCoreFn _ _ _ = []
 
   -- | Desugars expressions from AST to CoreFn representation.
-  exprToCoreFn :: Maybe SourceSpan -> [Comment] -> Maybe Type -> A.Expr -> Expr Ann
+  exprToCoreFn :: Maybe SourceSpan -> [Comment] -> Maybe (Type ()) -> A.Expr -> Expr Ann
   exprToCoreFn ss com ty (A.Literal lit) =
     Literal (ss, com, ty, Nothing) (fmap (exprToCoreFn ss com Nothing) lit)
   exprToCoreFn ss com ty (A.Accessor name v) =
@@ -183,12 +183,12 @@ moduleToCoreFn env (A.Module _ coms mn decls (Just exps)) =
     where
 
     numConstructors
-      :: (Qualified (ProperName 'ConstructorName), (DataDeclType, ProperName 'TypeName, Type, [Ident]))
+      :: (Qualified (ProperName 'ConstructorName), (DataDeclType, ProperName 'TypeName, Type (), [Ident]))
       -> Int
     numConstructors ty = length $ filter (((==) `on` typeConstructor) ty) $ M.toList $ dataConstructors env
 
     typeConstructor
-      :: (Qualified (ProperName 'ConstructorName), (DataDeclType, ProperName 'TypeName, Type, [Ident]))
+      :: (Qualified (ProperName 'ConstructorName), (DataDeclType, ProperName 'TypeName, Type (), [Ident]))
       -> (ModuleName, ProperName 'TypeName)
     typeConstructor (Qualified (Just mn') _, (_, tyCtor, _, _)) = (mn', tyCtor)
     typeConstructor _ = internalError "Invalid argument to typeConstructor"
