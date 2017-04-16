@@ -15,6 +15,7 @@ import Control.DeepSeq (NFData)
 import Control.Monad ((<=<))
 import qualified Data.Aeson as A
 import qualified Data.Aeson.TH as A
+import Data.Functor (void)
 import Data.List (sortBy)
 import Data.Ord (comparing)
 import Data.Maybe (fromMaybe)
@@ -108,6 +109,26 @@ typeAnn (PrettyPrintForAll ann _ _) = ann
 typeAnn (BinaryNoParensType ann _ _ _) = ann
 typeAnn (ParensInType ann _) = ann
 
+eraseTypeAnns :: Type ka ta -> Type () ()
+eraseTypeAnns (TUnknown _ x) = TUnknown () x
+eraseTypeAnns (TypeVar _ x) = TypeVar () x
+eraseTypeAnns (TypeLevelString _ x) = TypeLevelString () x
+eraseTypeAnns (TypeWildcard _ x) = TypeWildcard () x
+eraseTypeAnns (TypeConstructor _ x) = TypeConstructor () x
+eraseTypeAnns (TypeOp _ x) = TypeOp () x
+eraseTypeAnns (TypeApp _ x y) = TypeApp () (eraseTypeAnns x) (eraseTypeAnns y)
+eraseTypeAnns (ForAll _ x y z) = ForAll () x (eraseTypeAnns y) z
+eraseTypeAnns (ConstrainedType _ x y) = ConstrainedType () (eraseConstraintAnns x) (eraseTypeAnns y)
+eraseTypeAnns (Skolem _ x y z w) = Skolem () x y z w
+eraseTypeAnns (REmpty _) = REmpty ()
+eraseTypeAnns (RCons _ x y z) = RCons () x (eraseTypeAnns y) (eraseTypeAnns z)
+eraseTypeAnns (KindedType _ x y) = KindedType () (eraseTypeAnns x) (void y)
+eraseTypeAnns (PrettyPrintFunction _ x y) = PrettyPrintFunction () (eraseTypeAnns x) (eraseTypeAnns y)
+eraseTypeAnns (PrettyPrintObject _ x) = PrettyPrintObject () (eraseTypeAnns x)
+eraseTypeAnns (PrettyPrintForAll _ x y) = PrettyPrintForAll () x (eraseTypeAnns y)
+eraseTypeAnns (BinaryNoParensType _ x y z) = BinaryNoParensType () (eraseTypeAnns x) (eraseTypeAnns y) (eraseTypeAnns z)
+eraseTypeAnns (ParensInType _ x) = ParensInType () (eraseTypeAnns x)
+
 -- | Additional data relevant to type class constraints
 data ConstraintData
   = PartialConstraintData [[Text]] Bool
@@ -126,13 +147,17 @@ data Constraint ka ta = Constraint
   -- ^ constraint annotation
   , constraintClass :: Qualified (ProperName 'ClassName)
   -- ^ constraint class name
-  , constraintArgs  :: [Type ka ta]
+  , constraintArgs :: [Type ka ta]
   -- ^ type arguments
-  , constraintData  :: Maybe ConstraintData
+  , constraintData :: Maybe ConstraintData
   -- ^ additional data relevant to this constraint
   } deriving (Show, Eq, Ord, Generic, Functor)
 
 instance (NFData ka, NFData ta) => NFData (Constraint ka ta)
+
+eraseConstraintAnns :: Constraint ka ta -> Constraint () ()
+eraseConstraintAnns Constraint{..} =
+  Constraint () constraintClass (fmap eraseTypeAnns constraintArgs) constraintData
 
 mapConstraintArgs :: ([Type ka ta] -> [Type ka ta]) -> Constraint ka ta -> Constraint ka ta
 mapConstraintArgs f c = c { constraintArgs = f (constraintArgs c) }

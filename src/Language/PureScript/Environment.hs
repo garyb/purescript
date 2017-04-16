@@ -30,14 +30,14 @@ import qualified Language.PureScript.Constants as C
 
 -- | The @Environment@ defines all values and types which are currently in scope:
 data Environment = Environment
-  { names :: M.Map (Qualified Ident) (Type TypeAnn, NameKind, NameVisibility)
+  { names :: M.Map (Qualified Ident) (Type KindAnn TypeAnn, NameKind, NameVisibility)
   -- ^ Values currently in scope
-  , types :: M.Map (Qualified (ProperName 'TypeName)) (Kind, TypeKind)
+  , types :: M.Map (Qualified (ProperName 'TypeName)) (Kind KindAnn, TypeKind)
   -- ^ Type names currently in scope
-  , dataConstructors :: M.Map (Qualified (ProperName 'ConstructorName)) (DataDeclType, ProperName 'TypeName, Type TypeAnn, [Ident])
+  , dataConstructors :: M.Map (Qualified (ProperName 'ConstructorName)) (DataDeclType, ProperName 'TypeName, Type KindAnn TypeAnn, [Ident])
   -- ^ Data constructors currently in scope, along with their associated type
   -- constructor name, argument types and return type.
-  , typeSynonyms :: M.Map (Qualified (ProperName 'TypeName)) ([(Text, Maybe Kind)], Type TypeAnn)
+  , typeSynonyms :: M.Map (Qualified (ProperName 'TypeName)) ([(Text, Maybe (Kind KindAnn))], Type KindAnn TypeAnn)
   -- ^ Type synonyms currently in scope
   , typeClassDictionaries :: M.Map (Maybe ModuleName) (M.Map (Qualified (ProperName 'ClassName)) (M.Map (Qualified Ident) NamedDict))
   -- ^ Available type class dictionaries
@@ -51,13 +51,13 @@ instance NFData Environment
 
 -- | Information about a type class
 data TypeClassData = TypeClassData
-  { typeClassArguments :: [(Text, Maybe Kind)]
+  { typeClassArguments :: [(Text, Maybe (Kind KindAnn))]
   -- ^ A list of type argument names, and their kinds, where kind annotations
   -- were provided.
-  , typeClassMembers :: [(Ident, Type TypeAnn)]
+  , typeClassMembers :: [(Ident, Type KindAnn TypeAnn)]
   -- ^ A list of type class members and their types. Type arguments listed above
   -- are considered bound in these types.
-  , typeClassSuperclasses :: [Constraint TypeAnn]
+  , typeClassSuperclasses :: [Constraint KindAnn TypeAnn]
   -- ^ A list of superclasses of this type class. Type arguments listed above
   -- are considered bound in the types appearing in these constraints.
   , typeClassDependencies :: [FunctionalDependency]
@@ -120,9 +120,9 @@ initEnvironment = Environment M.empty primTypes M.empty M.empty M.empty primClas
 -- determine X that X does not determine. This is the same thing: everything X determines includes everything
 -- in its SCC, and everything determining X is either before it in an SCC path, or in the same SCC.
 makeTypeClassData
-  :: [(Text, Maybe Kind)]
-  -> [(Ident, Type TypeAnn)]
-  -> [Constraint TypeAnn]
+  :: [(Text, Maybe (Kind KindAnn))]
+  -> [(Ident, Type KindAnn TypeAnn)]
+  -> [Constraint KindAnn TypeAnn]
   -> [FunctionalDependency]
   -> TypeClassData
 makeTypeClassData args m s deps = TypeClassData args m s deps determinedArgs coveringSets
@@ -197,7 +197,7 @@ instance NFData NameKind
 
 -- | The kinds of a type
 data TypeKind
-  = DataType [(Text, Maybe Kind)] [(ProperName 'ConstructorName, [Type TypeAnn])]
+  = DataType [(Text, Maybe (Kind KindAnn))] [(ProperName 'ConstructorName, [Type KindAnn TypeAnn])]
   -- ^ Data type
   | TypeSynonym
   -- ^ Type synonym
@@ -211,28 +211,29 @@ data TypeKind
 
 instance NFData TypeKind
 
-instance A.ToJSON TypeKind where
-  toJSON (DataType args ctors) =
-    A.object [ T.pack "DataType" .= A.object ["args" .= args, "ctors" .= ctors] ]
-  toJSON TypeSynonym       = A.toJSON (T.pack "TypeSynonym")
-  toJSON ExternData        = A.toJSON (T.pack "ExternData")
-  toJSON LocalTypeVariable = A.toJSON (T.pack "LocalTypeVariable")
-  toJSON ScopedTypeVar     = A.toJSON (T.pack "ScopedTypeVar")
-
-instance A.FromJSON TypeKind where
-  parseJSON (A.Object o) = do
-    args <- o .: "DataType"
-    A.withObject "args" (\o1 ->
-      DataType <$> o1 .: "args"
-               <*> o1 .: "ctors") args
-  parseJSON (A.String s) =
-    case s of
-      "TypeSynonym"       -> pure TypeSynonym
-      "ExternData"        -> pure ExternData
-      "LocalTypeVariable" -> pure LocalTypeVariable
-      "ScopedTypeVar"     -> pure ScopedTypeVar
-      _ -> fail "Unknown TypeKind"
-  parseJSON _ = fail "Invalid TypeKind"
+-- TODO-ann: restore instance stuff again
+-- instance A.ToJSON TypeKind where
+--   toJSON (DataType args ctors) =
+--     A.object [ T.pack "DataType" .= A.object ["args" .= args, "ctors" .= ctors] ]
+--   toJSON TypeSynonym       = A.toJSON (T.pack "TypeSynonym")
+--   toJSON ExternData        = A.toJSON (T.pack "ExternData")
+--   toJSON LocalTypeVariable = A.toJSON (T.pack "LocalTypeVariable")
+--   toJSON ScopedTypeVar     = A.toJSON (T.pack "ScopedTypeVar")
+--
+-- instance A.FromJSON TypeKind where
+--   parseJSON (A.Object o) = do
+--     args <- o .: "DataType"
+--     A.withObject "args" (\o1 ->
+--       DataType <$> o1 .: "args"
+--                <*> o1 .: "ctors") args
+--   parseJSON (A.String s) =
+--     case s of
+--       "TypeSynonym"       -> pure TypeSynonym
+--       "ExternData"        -> pure ExternData
+--       "LocalTypeVariable" -> pure LocalTypeVariable
+--       "ScopedTypeVar"     -> pure ScopedTypeVar
+--       _ -> fail "Unknown TypeKind"
+--   parseJSON _ = fail "Invalid TypeKind"
 
 -- | The type ('data' or 'newtype') of a data type declaration
 data DataDeclType
@@ -262,69 +263,72 @@ instance A.FromJSON DataDeclType where
 primName :: Text -> Qualified (ProperName a)
 primName = Qualified (Just $ ModuleName [ProperName C.prim]) . ProperName
 
-primKind :: Text -> Kind
-primKind = NamedKind . primName
+primKind :: Text -> a -> Kind a
+primKind name ann = NamedKind ann (primName name)
+
+primKindAnn :: KindAnn
+primKindAnn = SourceSpan "<prim>" (SourcePos 0 0) (SourcePos 0 0)
 
 -- | Kind of ground types
-kindType :: Kind
+kindType :: a -> Kind a
 kindType = primKind C.typ
 
-kindSymbol :: Kind
+kindSymbol :: a -> Kind a
 kindSymbol = primKind C.symbol
 
-primAnn :: TypeAnn
-primAnn = SourceSpan "<prim>" (SourcePos 0 0) (SourcePos 0 0)
+primTypeAnn :: TypeAnn
+primTypeAnn = SourceSpan "<prim>" (SourcePos 0 0) (SourcePos 0 0)
 
 -- | Construct a type from the Prim module
-primTy :: Text -> a -> Type a
+primTy :: Text -> ta -> Type ka ta
 primTy name ann = TypeConstructor ann (primName name)
 
 -- | Type constructor for functions
-tyFunction :: a -> Type a
+tyFunction :: ta -> Type ka ta
 tyFunction = primTy "Function"
 
 -- | Type constructor for strings
-tyString :: a -> Type a
+tyString :: ta -> Type ka ta
 tyString = primTy "String"
 
 -- | Type constructor for strings
-tyChar :: a -> Type a
+tyChar :: ta -> Type ka ta
 tyChar = primTy "Char"
 
 -- | Type constructor for numbers
-tyNumber :: a -> Type a
+tyNumber :: ta -> Type ka ta
 tyNumber = primTy "Number"
 
 -- | Type constructor for integers
-tyInt :: a -> Type a
+tyInt :: ta -> Type ka ta
 tyInt = primTy "Int"
 
 -- | Type constructor for booleans
-tyBoolean :: a -> Type a
+tyBoolean :: ta -> Type ka ta
 tyBoolean = primTy "Boolean"
 
 -- | Type constructor for arrays
-tyArray :: a -> Type a
+tyArray :: ta -> Type ka ta
 tyArray = primTy "Array"
 
 -- | Type constructor for records
-tyRecord :: a -> Type a
+tyRecord :: ta -> Type ka ta
 tyRecord = primTy "Record"
 
 -- | Check whether a type is a record
-isObject :: Type a -> Bool
+isObject :: Type ka ta -> Bool
 isObject = isTypeOrApplied (tyRecord ()) . void
 
 -- | Check whether a type is a function
-isFunction :: Type a -> Bool
+isFunction :: Type ka ta -> Bool
 isFunction = isTypeOrApplied (tyFunction ()) . void
 
-isTypeOrApplied :: Type a -> Type b -> Bool
-isTypeOrApplied t1 (TypeApp _ t2 _) = void t1 == void t2
-isTypeOrApplied t1 t2 = void t1 == void t2
+isTypeOrApplied :: Type ka ta -> Type kb tb -> Bool
+isTypeOrApplied t1 (TypeApp _ t2 _) = eraseTypeAnns t1 == eraseTypeAnns t2
+isTypeOrApplied t1 t2 = eraseTypeAnns t1 == eraseTypeAnns t2
 
 -- | Smart constructor for function types
-function :: TypeAnn -> Type TypeAnn -> Type TypeAnn -> Type TypeAnn
+function :: TypeAnn -> Type KindAnn TypeAnn -> Type KindAnn TypeAnn -> Type KindAnn TypeAnn
 function ann t1 = TypeApp ann (TypeApp ann (tyFunction ann) t1) -- TODO-ann: is repeating the annotation correct here?
 
 -- | The primitive kinds
@@ -338,24 +342,24 @@ primKinds =
 -- | The primitive types in the external javascript environment with their
 -- associated kinds. There are also pseudo `Fail`, `Warn`, and `Partial` types
 -- that correspond to the classes with the same names.
-primTypes :: M.Map (Qualified (ProperName 'TypeName)) (Kind, TypeKind)
+primTypes :: M.Map (Qualified (ProperName 'TypeName)) (Kind KindAnn, TypeKind)
 primTypes =
   M.fromList
-    [ (primName "Function",   (FunKind kindType (FunKind kindType kindType), ExternData))
-    , (primName "Array",      (FunKind kindType kindType, ExternData))
-    , (primName "Record",     (FunKind (Row kindType) kindType, ExternData))
-    , (primName "String",     (kindType, ExternData))
-    , (primName "Char",       (kindType, ExternData))
-    , (primName "Number",     (kindType, ExternData))
-    , (primName "Int",        (kindType, ExternData))
-    , (primName "Boolean",    (kindType, ExternData))
-    , (primName "Partial",    (kindType, ExternData))
-    , (primName "Union",      (FunKind (Row kindType) (FunKind (Row kindType) (FunKind (Row kindType) kindType)), ExternData))
-    , (primName "RowCons",    (FunKind kindSymbol (FunKind kindType (FunKind (Row kindType) (FunKind (Row kindType) kindType))), ExternData))
-    , (primName "Fail",       (FunKind kindSymbol kindType, ExternData))
-    , (primName "Warn",       (FunKind kindSymbol kindType, ExternData))
-    , (primName "TypeString", (FunKind kindType kindSymbol, ExternData))
-    , (primName "TypeConcat", (FunKind kindSymbol (FunKind kindSymbol kindSymbol), ExternData))
+    [ (primName "Function",   (FunKind primKindAnn (kindType primKindAnn) (FunKind primKindAnn (kindType primKindAnn) (kindType primKindAnn)), ExternData))
+    , (primName "Array",      (FunKind primKindAnn (kindType primKindAnn) (kindType primKindAnn), ExternData))
+    , (primName "Record",     (FunKind primKindAnn (Row primKindAnn (kindType primKindAnn)) (kindType primKindAnn), ExternData))
+    , (primName "String",     (kindType primKindAnn, ExternData))
+    , (primName "Char",       (kindType primKindAnn, ExternData))
+    , (primName "Number",     (kindType primKindAnn, ExternData))
+    , (primName "Int",        (kindType primKindAnn, ExternData))
+    , (primName "Boolean",    (kindType primKindAnn, ExternData))
+    , (primName "Partial",    (kindType primKindAnn, ExternData))
+    , (primName "Union",      (FunKind primKindAnn (Row primKindAnn (kindType primKindAnn)) (FunKind primKindAnn (Row primKindAnn (kindType primKindAnn)) (FunKind primKindAnn (Row primKindAnn (kindType primKindAnn)) (kindType primKindAnn))), ExternData))
+    , (primName "RowCons",    (FunKind primKindAnn (kindSymbol primKindAnn) (FunKind primKindAnn (kindType primKindAnn) (FunKind primKindAnn (Row primKindAnn (kindType primKindAnn)) (FunKind primKindAnn (Row primKindAnn (kindType primKindAnn)) (kindType primKindAnn)))), ExternData))
+    , (primName "Fail",       (FunKind primKindAnn (kindSymbol primKindAnn) (kindType primKindAnn), ExternData))
+    , (primName "Warn",       (FunKind primKindAnn (kindSymbol primKindAnn) (kindType primKindAnn), ExternData))
+    , (primName "TypeString", (FunKind primKindAnn (kindType primKindAnn) (kindSymbol primKindAnn), ExternData))
+    , (primName "TypeConcat", (FunKind primKindAnn (kindSymbol primKindAnn) (FunKind primKindAnn (kindSymbol primKindAnn) (kindSymbol primKindAnn)), ExternData))
     ]
 
 -- | The primitive class map. This just contains the `Fail`, `Warn`, and `Partial`
@@ -367,14 +371,14 @@ primClasses =
   M.fromList
     [ (primName "Partial", makeTypeClassData [] [] [] [])
     -- class Fail (message :: Symbol)
-    , (primName "Fail",    makeTypeClassData [("message", Just kindSymbol)] [] [] [])
+    , (primName "Fail",    makeTypeClassData [("message", Just (kindSymbol primKindAnn))] [] [] [])
     -- class Warn (message :: Symbol)
-    , (primName "Warn",    makeTypeClassData [("message", Just kindSymbol)] [] [] [])
+    , (primName "Warn",    makeTypeClassData [("message", Just (kindSymbol primKindAnn))] [] [] [])
     -- class Union (l :: # Type) (r :: # Type) (u :: # Type) | l r -> u, r u -> l, u l -> r
     , (primName "Union",   makeTypeClassData
-                             [ ("l", Just (Row kindType))
-                             , ("r", Just (Row kindType))
-                             , ("u", Just (Row kindType))
+                             [ ("l", Just (Row primKindAnn (kindType primKindAnn)))
+                             , ("r", Just (Row primKindAnn (kindType primKindAnn)))
+                             , ("u", Just (Row primKindAnn (kindType primKindAnn)))
                              ] [] []
                              [ FunctionalDependency [0, 1] [2]
                              , FunctionalDependency [1, 2] [0]
@@ -382,10 +386,10 @@ primClasses =
                              ])
     -- class RowCons (l :: Symbol) (a :: Type) (i :: # Type) (o :: # Type) | l i a -> o, l o -> a i
     , (primName "RowCons", makeTypeClassData
-                             [ ("l", Just kindSymbol)
-                             , ("a", Just (Row kindType))
-                             , ("i", Just kindType)
-                             , ("o", Just kindType)
+                             [ ("l", Just (kindSymbol primKindAnn))
+                             , ("a", Just (Row primKindAnn (kindType primKindAnn)))
+                             , ("i", Just (kindType primKindAnn))
+                             , ("o", Just (kindType primKindAnn))
                              ] [] []
                              [ FunctionalDependency [0, 1, 2] [3]
                              , FunctionalDependency [0, 3] [1, 2]
@@ -393,7 +397,7 @@ primClasses =
     ]
 
 -- | Finds information about data constructors from the current environment.
-lookupConstructor :: Environment -> Qualified (ProperName 'ConstructorName) -> (DataDeclType, ProperName 'TypeName, Type TypeAnn, [Ident])
+lookupConstructor :: Environment -> Qualified (ProperName 'ConstructorName) -> (DataDeclType, ProperName 'TypeName, Type KindAnn TypeAnn, [Ident])
 lookupConstructor env ctor =
   fromMaybe (internalError "Data constructor not found") $ ctor `M.lookup` dataConstructors env
 
@@ -404,5 +408,5 @@ isNewtypeConstructor e ctor = case lookupConstructor e ctor of
   (Data, _, _, _) -> False
 
 -- | Finds information about values from the current environment.
-lookupValue :: Environment -> Qualified Ident -> Maybe (Type TypeAnn, NameKind, NameVisibility)
+lookupValue :: Environment -> Qualified Ident -> Maybe (Type KindAnn TypeAnn, NameKind, NameVisibility)
 lookupValue env ident = ident `M.lookup` names env
