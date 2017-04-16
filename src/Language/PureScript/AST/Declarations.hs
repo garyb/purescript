@@ -15,6 +15,7 @@ import Data.Aeson.TH
 import qualified Data.Map as M
 import Data.Text (Text)
 
+import Language.PureScript.AST.Ann
 import Language.PureScript.AST.Binders
 import Language.PureScript.AST.Literals
 import Language.PureScript.AST.Operators
@@ -32,16 +33,16 @@ import qualified Language.PureScript.Bundle as Bundle
 import qualified Text.Parsec as P
 
 -- | A map of locally-bound names in scope.
-type Context = [(Ident, Type)]
+type Context = [(Ident, Type KindAnn TypeAnn)]
 
 -- | Holds the data necessary to do type directed search for typed holes
 data TypeSearch
   = TSBefore Environment
   -- ^ An Environment captured for later consumption by type directed search
   | TSAfter
-    { tsAfterIdentifiers :: [(Qualified Text, Type)]
+    { tsAfterIdentifiers :: [(Qualified Text, Type KindAnn TypeAnn)]
     -- ^ The identifiers that fully satisfy the subsumption check
-    , tsAfterRecordFields :: Maybe [(Label, Type)]
+    , tsAfterRecordFields :: Maybe [(Label, Type KindAnn TypeAnn)]
     -- ^ Record fields that are available on the first argument to the typed
     -- hole
     }
@@ -49,10 +50,10 @@ data TypeSearch
   -- Environment
   deriving Show
 
-onTypeSearchTypes :: (Type -> Type) -> TypeSearch -> TypeSearch
+onTypeSearchTypes :: (Type KindAnn TypeAnn -> Type KindAnn TypeAnn) -> TypeSearch -> TypeSearch
 onTypeSearchTypes f = runIdentity . onTypeSearchTypesM (Identity . f)
 
-onTypeSearchTypesM :: (Applicative m) => (Type -> m Type) -> TypeSearch -> m TypeSearch
+onTypeSearchTypesM :: Applicative m => (Type KindAnn TypeAnn -> m (Type KindAnn TypeAnn)) -> TypeSearch -> m TypeSearch
 onTypeSearchTypesM f (TSAfter i r) = TSAfter <$> traverse (traverse f) i <*> traverse (traverse (traverse f)) r
 onTypeSearchTypesM _ (TSBefore env) = pure (TSBefore env)
 
@@ -70,8 +71,8 @@ data SimpleErrorMessage
   | CannotGetFileInfo FilePath
   | CannotReadFile FilePath
   | CannotWriteFile FilePath
-  | InfiniteType Type
-  | InfiniteKind Kind
+  | InfiniteType (Type KindAnn TypeAnn)
+  | InfiniteKind (Kind KindAnn)
   | MultipleValueOpFixities (OpName 'ValueOpName)
   | MultipleTypeOpFixities (OpName 'TypeOpName)
   | OrphanTypeDeclaration Ident
@@ -96,44 +97,44 @@ data SimpleErrorMessage
   | NameIsUndefined Ident
   | UndefinedTypeVariable (ProperName 'TypeName)
   | PartiallyAppliedSynonym (Qualified (ProperName 'TypeName))
-  | EscapedSkolem Text (Maybe SourceSpan) Type
-  | TypesDoNotUnify Type Type
-  | KindsDoNotUnify Kind Kind
-  | ConstrainedTypeUnified Type Type
-  | OverlappingInstances (Qualified (ProperName 'ClassName)) [Type] [Qualified Ident]
-  | NoInstanceFound Constraint
-  | AmbiguousTypeVariables Type Constraint
+  | EscapedSkolem Text (Maybe SourceSpan) (Type KindAnn TypeAnn)
+  | TypesDoNotUnify (Type KindAnn TypeAnn) (Type KindAnn TypeAnn)
+  | KindsDoNotUnify (Kind KindAnn) (Kind KindAnn)
+  | ConstrainedTypeUnified (Type KindAnn TypeAnn) (Type KindAnn TypeAnn)
+  | OverlappingInstances (Qualified (ProperName 'ClassName)) [Type KindAnn TypeAnn] [Qualified Ident]
+  | NoInstanceFound (Constraint KindAnn TypeAnn)
+  | AmbiguousTypeVariables (Type KindAnn TypeAnn) (Constraint KindAnn TypeAnn)
   | UnknownClass (Qualified (ProperName 'ClassName))
-  | PossiblyInfiniteInstance (Qualified (ProperName 'ClassName)) [Type]
-  | CannotDerive (Qualified (ProperName 'ClassName)) [Type]
-  | InvalidDerivedInstance (Qualified (ProperName 'ClassName)) [Type] Int
-  | ExpectedTypeConstructor (Qualified (ProperName 'ClassName)) [Type] Type
-  | InvalidNewtypeInstance (Qualified (ProperName 'ClassName)) [Type]
+  | PossiblyInfiniteInstance (Qualified (ProperName 'ClassName)) [Type KindAnn TypeAnn]
+  | CannotDerive (Qualified (ProperName 'ClassName)) [Type KindAnn TypeAnn]
+  | InvalidDerivedInstance (Qualified (ProperName 'ClassName)) [Type KindAnn TypeAnn] Int
+  | ExpectedTypeConstructor (Qualified (ProperName 'ClassName)) [Type KindAnn TypeAnn] (Type KindAnn TypeAnn)
+  | InvalidNewtypeInstance (Qualified (ProperName 'ClassName)) [Type KindAnn TypeAnn]
   | CannotFindDerivingType (ProperName 'TypeName)
-  | DuplicateLabel Label (Maybe Expr)
+  | DuplicateLabel Label (Maybe (Expr KindAnn TypeAnn ValueAnn))
   | DuplicateValueDeclaration Ident
   | ArgListLengthsDiffer Ident
   | OverlappingArgNames (Maybe Ident)
   | MissingClassMember Ident
   | ExtraneousClassMember Ident (Qualified (ProperName 'ClassName))
-  | ExpectedType Type Kind
+  | ExpectedType (Type KindAnn TypeAnn) (Kind KindAnn)
   | IncorrectConstructorArity (Qualified (ProperName 'ConstructorName))
-  | ExprDoesNotHaveType Expr Type
+  | ExprDoesNotHaveType (Expr KindAnn TypeAnn ValueAnn) (Type KindAnn TypeAnn)
   | PropertyIsMissing Label
   | AdditionalProperty Label
   | TypeSynonymInstance
-  | OrphanInstance Ident (Qualified (ProperName 'ClassName)) [Type]
+  | OrphanInstance Ident (Qualified (ProperName 'ClassName)) [Type KindAnn TypeAnn]
   | InvalidNewtype (ProperName 'TypeName)
-  | InvalidInstanceHead Type
+  | InvalidInstanceHead (Type KindAnn TypeAnn)
   | TransitiveExportError DeclarationRef [DeclarationRef]
   | TransitiveDctorExportError DeclarationRef (ProperName 'ConstructorName)
   | ShadowedName Ident
   | ShadowedTypeVar Text
   | UnusedTypeVar Text
-  | WildcardInferredType Type Context
-  | HoleInferredType Text Type Context TypeSearch
-  | MissingTypeDeclaration Ident Type
-  | OverlappingPattern [[Binder]] Bool
+  | WildcardInferredType (Type KindAnn TypeAnn) Context
+  | HoleInferredType Text (Type KindAnn TypeAnn) Context TypeSearch
+  | MissingTypeDeclaration Ident (Type KindAnn TypeAnn)
+  | OverlappingPattern [[Binder KindAnn TypeAnn ValueAnn]] Bool
   | IncompleteExhaustivityCheck
   | MisleadingEmptyTypeImport ModuleName (ProperName 'TypeName)
   | ImportHidingModule ModuleName
@@ -149,17 +150,17 @@ data SimpleErrorMessage
   | ImplicitQualifiedImport ModuleName ModuleName [DeclarationRef]
   | ImplicitImport ModuleName [DeclarationRef]
   | HidingImport ModuleName [DeclarationRef]
-  | CaseBinderLengthDiffers Int [Binder]
+  | CaseBinderLengthDiffers Int [Binder KindAnn TypeAnn ValueAnn]
   | IncorrectAnonymousArgument
   | InvalidOperatorInBinder (Qualified (OpName 'ValueOpName)) (Qualified Ident)
-  | CannotGeneralizeRecursiveFunction Ident Type
+  | CannotGeneralizeRecursiveFunction Ident (Type KindAnn TypeAnn)
   | CannotDeriveNewtypeForData (ProperName 'TypeName)
   | ExpectedWildcard (ProperName 'TypeName)
   | CannotUseBindWithDo Ident
   -- | instance name, type class, expected argument count, actual argument count
   | ClassInstanceArityMismatch Ident (Qualified (ProperName 'ClassName)) Int Int
   -- | a user-defined warning raised by using the Warn type class
-  | UserDefinedWarning Type
+  | UserDefinedWarning (Type KindAnn TypeAnn)
   -- | a declaration couldn't be used because there wouldn't be enough information
   -- | to choose an instance
   | UnusableDeclaration Ident
@@ -167,17 +168,17 @@ data SimpleErrorMessage
 
 -- | Error message hints, providing more detailed information about failure.
 data ErrorMessageHint
-  = ErrorUnifyingTypes Type Type
-  | ErrorInExpression Expr
+  = ErrorUnifyingTypes (Type KindAnn TypeAnn) (Type KindAnn TypeAnn)
+  | ErrorInExpression (Expr KindAnn TypeAnn ValueAnn)
   | ErrorInModule ModuleName
-  | ErrorInInstance (Qualified (ProperName 'ClassName)) [Type]
-  | ErrorInSubsumption Type Type
-  | ErrorCheckingAccessor Expr PSString
-  | ErrorCheckingType Expr Type
-  | ErrorCheckingKind Type
+  | ErrorInInstance (Qualified (ProperName 'ClassName)) [Type KindAnn TypeAnn]
+  | ErrorInSubsumption (Type KindAnn TypeAnn) (Type KindAnn TypeAnn)
+  | ErrorCheckingAccessor (Expr KindAnn TypeAnn ValueAnn) PSString
+  | ErrorCheckingType (Expr KindAnn TypeAnn ValueAnn) (Type KindAnn TypeAnn)
+  | ErrorCheckingKind (Type KindAnn TypeAnn)
   | ErrorCheckingGuard
-  | ErrorInferringType Expr
-  | ErrorInApplication Expr Type Expr
+  | ErrorInferringType (Expr KindAnn TypeAnn ValueAnn)
+  | ErrorInApplication (Expr KindAnn TypeAnn ValueAnn) (Type KindAnn TypeAnn) (Expr KindAnn TypeAnn ValueAnn)
   | ErrorInDataConstructor (ProperName 'ConstructorName)
   | ErrorInTypeConstructor (ProperName 'TypeName)
   | ErrorInBindingGroup [Ident]
@@ -187,7 +188,7 @@ data ErrorMessageHint
   | ErrorInTypeDeclaration Ident
   | ErrorInTypeClassDeclaration (ProperName 'ClassName)
   | ErrorInForeignImport Ident
-  | ErrorSolvingConstraint Constraint
+  | ErrorSolvingConstraint (Constraint KindAnn TypeAnn)
   | PositionedError SourceSpan
   deriving (Show)
 
@@ -211,29 +212,30 @@ data ErrorMessage = ErrorMessage
 -- a list of declarations, and a list of the declarations that are
 -- explicitly exported. If the export list is Nothing, everything is exported.
 --
-data Module = Module SourceSpan [Comment] ModuleName [Declaration] (Maybe [DeclarationRef])
+data Module ka ta va = Module SourceSpan [Comment] ModuleName [Declaration ka ta va] (Maybe [DeclarationRef])
   deriving (Show)
 
 -- | Return a module's name.
-getModuleName :: Module -> ModuleName
+getModuleName :: Module ka ta va -> ModuleName
 getModuleName (Module _ _ name _ _) = name
 
 -- | Return a module's source span.
-getModuleSourceSpan :: Module -> SourceSpan
+getModuleSourceSpan :: Module ka ta va -> SourceSpan
 getModuleSourceSpan (Module ss _ _ _ _) = ss
 
 -- |
 -- Add an import declaration for a module if it does not already explicitly import it.
 --
-addDefaultImport :: ModuleName -> Module -> Module
-addDefaultImport toImport m@(Module ss coms mn decls exps)  =
+addDefaultImport :: va -> ModuleName -> Module ka ta va -> Module ka ta va
+addDefaultImport ann toImport m@(Module ss coms mn decls exps)  =
   if isExistingImport `any` decls || mn == toImport then m
-  else Module ss coms mn (ImportDeclaration toImport Implicit Nothing : decls) exps
+  else Module ss coms mn (ImportDeclaration ann toImport Implicit Nothing : decls) exps
   where
-  isExistingImport (ImportDeclaration mn' _ _) | mn' == toImport = True
-  isExistingImport (PositionedDeclaration _ _ d) = isExistingImport d
+  isExistingImport (ImportDeclaration _ mn' _ _) | mn' == toImport = True
+  isExistingImport (PositionedDeclaration _ _ _ d) = isExistingImport d
   isExistingImport _ = False
 
+-- TODO-ann: DeclarationRefs should have annotations too probably?
 -- |
 -- An item in a list of explicit imports or exports
 --
@@ -386,67 +388,67 @@ isExplicit _ = False
 -- |
 -- The data type of declarations
 --
-data Declaration
+data Declaration ka ta va
   -- |
   -- A data type declaration (data or newtype, name, arguments, data constructors)
   --
-  = DataDeclaration DataDeclType (ProperName 'TypeName) [(Text, Maybe Kind)] [(ProperName 'ConstructorName, [Type])]
+  = DataDeclaration va DataDeclType (ProperName 'TypeName) [(Text, Maybe (Kind ka))] [(ProperName 'ConstructorName, [Type ka ta])]
   -- |
   -- A minimal mutually recursive set of data type declarations
   --
-  | DataBindingGroupDeclaration [Declaration]
+  | DataBindingGroupDeclaration va [Declaration ka ta va]
   -- |
   -- A type synonym declaration (name, arguments, type)
   --
-  | TypeSynonymDeclaration (ProperName 'TypeName) [(Text, Maybe Kind)] Type
+  | TypeSynonymDeclaration va (ProperName 'TypeName) [(Text, Maybe (Kind ka))] (Type ka ta)
   -- |
   -- A type declaration for a value (name, ty)
   --
-  | TypeDeclaration Ident Type
+  | TypeDeclaration va Ident (Type ka ta)
   -- |
   -- A value declaration (name, top-level binders, optional guard, value)
   --
-  | ValueDeclaration Ident NameKind [Binder] [GuardedExpr]
+  | ValueDeclaration va Ident NameKind [Binder ka ta va] [GuardedExpr ka ta va]
   -- |
   -- A declaration paired with pattern matching in let-in expression (binder, optional guard, value)
-  | BoundValueDeclaration Binder Expr
+  | BoundValueDeclaration va (Binder ka ta va) (Expr ka ta va)
   -- |
   -- A minimal mutually recursive set of value declarations
   --
-  | BindingGroupDeclaration [(Ident, NameKind, Expr)]
+  | BindingGroupDeclaration va [(Ident, NameKind, Expr ka ta va)]
   -- |
   -- A foreign import declaration (name, type)
   --
-  | ExternDeclaration Ident Type
+  | ExternDeclaration va Ident (Type ka ta)
   -- |
   -- A data type foreign import (name, kind)
   --
-  | ExternDataDeclaration (ProperName 'TypeName) Kind
+  | ExternDataDeclaration va (ProperName 'TypeName) (Kind ka)
   -- |
   -- A foreign kind import (name)
   --
-  | ExternKindDeclaration (ProperName 'KindName)
+  | ExternKindDeclaration va (ProperName 'KindName)
   -- |
   -- A fixity declaration
   --
-  | FixityDeclaration (Either ValueFixity TypeFixity)
+  | FixityDeclaration va (Either ValueFixity TypeFixity)
   -- |
   -- A module import (module name, qualified/unqualified/hiding, optional "qualified as" name)
   --
-  | ImportDeclaration ModuleName ImportDeclarationType (Maybe ModuleName)
+  | ImportDeclaration va ModuleName ImportDeclarationType (Maybe ModuleName)
   -- |
   -- A type class declaration (name, argument, implies, member declarations)
   --
-  | TypeClassDeclaration (ProperName 'ClassName) [(Text, Maybe Kind)] [Constraint] [FunctionalDependency] [Declaration]
+  | TypeClassDeclaration va (ProperName 'ClassName) [(Text, Maybe (Kind ka))] [Constraint ka ta] [FunctionalDependency] [Declaration ka ta va]
   -- |
   -- A type instance declaration (name, dependencies, class name, instance types, member
   -- declarations)
   --
-  | TypeInstanceDeclaration Ident [Constraint] (Qualified (ProperName 'ClassName)) [Type] TypeInstanceBody
+  | TypeInstanceDeclaration va Ident [Constraint ka ta] (Qualified (ProperName 'ClassName)) [Type ka ta] (TypeInstanceBody ka ta va)
   -- |
   -- A declaration with source position information
   --
-  | PositionedDeclaration SourceSpan [Comment] Declaration
+  | PositionedDeclaration va SourceSpan [Comment] (Declaration ka ta va)
   deriving (Show)
 
 data ValueFixity = ValueFixity Fixity (Qualified (Either Ident (ProperName 'ConstructorName))) (OpName 'ValueOpName)
@@ -455,152 +457,166 @@ data ValueFixity = ValueFixity Fixity (Qualified (Either Ident (ProperName 'Cons
 data TypeFixity = TypeFixity Fixity (Qualified (ProperName 'TypeName)) (OpName 'TypeOpName)
   deriving (Eq, Ord, Show)
 
-pattern ValueFixityDeclaration :: Fixity -> Qualified (Either Ident (ProperName 'ConstructorName)) -> OpName 'ValueOpName -> Declaration
-pattern ValueFixityDeclaration fixity name op = FixityDeclaration (Left (ValueFixity fixity name op))
+pattern ValueFixityDeclaration
+  :: va
+  -> Fixity
+  -> Qualified (Either Ident (ProperName 'ConstructorName))
+  -> OpName 'ValueOpName
+  -> Declaration ka ta va
+pattern ValueFixityDeclaration ann fixity name op =
+  FixityDeclaration ann (Left (ValueFixity fixity name op))
 
-pattern TypeFixityDeclaration :: Fixity -> Qualified (ProperName 'TypeName) -> OpName 'TypeOpName -> Declaration
-pattern TypeFixityDeclaration fixity name op = FixityDeclaration (Right (TypeFixity fixity name op))
+pattern TypeFixityDeclaration
+  :: va
+  -> Fixity
+  -> Qualified (ProperName 'TypeName)
+  -> OpName 'TypeOpName
+  -> Declaration ka ta va
+pattern TypeFixityDeclaration ann fixity name op =
+  FixityDeclaration ann (Right (TypeFixity fixity name op))
 
 -- | The members of a type class instance declaration
-data TypeInstanceBody
+data TypeInstanceBody ka ta va
   = DerivedInstance
   -- ^ This is a derived instance
   | NewtypeInstance
   -- ^ This is an instance derived from a newtype
-  | NewtypeInstanceWithDictionary Expr
+  | NewtypeInstanceWithDictionary (Expr ka ta va)
   -- ^ This is an instance derived from a newtype, desugared to include a
   -- dictionary for the type under the newtype.
-  | ExplicitInstance [Declaration]
+  | ExplicitInstance [Declaration ka ta va]
   -- ^ This is a regular (explicit) instance
   deriving (Show)
 
-mapTypeInstanceBody :: ([Declaration] -> [Declaration]) -> TypeInstanceBody -> TypeInstanceBody
+mapTypeInstanceBody :: ([Declaration ka ta va] -> [Declaration ka ta va]) -> TypeInstanceBody ka ta va -> TypeInstanceBody ka ta va
 mapTypeInstanceBody f = runIdentity . traverseTypeInstanceBody (Identity . f)
 
 -- | A traversal for TypeInstanceBody
-traverseTypeInstanceBody :: (Applicative f) => ([Declaration] -> f [Declaration]) -> TypeInstanceBody -> f TypeInstanceBody
+traverseTypeInstanceBody :: Applicative f => ([Declaration ka ta va] -> f [Declaration ka ta va]) -> TypeInstanceBody ka ta va -> f (TypeInstanceBody ka ta va)
 traverseTypeInstanceBody f (ExplicitInstance ds) = ExplicitInstance <$> f ds
 traverseTypeInstanceBody _ other = pure other
 
 -- |
 -- Test if a declaration is a value declaration
 --
-isValueDecl :: Declaration -> Bool
+isValueDecl :: Declaration ka ta va -> Bool
 isValueDecl ValueDeclaration{} = True
-isValueDecl (PositionedDeclaration _ _ d) = isValueDecl d
+isValueDecl (PositionedDeclaration _ _ _ d) = isValueDecl d
 isValueDecl _ = False
 
 -- |
 -- Test if a declaration is a data type or type synonym declaration
 --
-isDataDecl :: Declaration -> Bool
+isDataDecl :: Declaration ka ta va -> Bool
 isDataDecl DataDeclaration{} = True
 isDataDecl TypeSynonymDeclaration{} = True
-isDataDecl (PositionedDeclaration _ _ d) = isDataDecl d
+isDataDecl (PositionedDeclaration _ _ _ d) = isDataDecl d
 isDataDecl _ = False
 
 -- |
 -- Test if a declaration is a module import
 --
-isImportDecl :: Declaration -> Bool
+isImportDecl :: Declaration ka ta va-> Bool
 isImportDecl ImportDeclaration{} = True
-isImportDecl (PositionedDeclaration _ _ d) = isImportDecl d
+isImportDecl (PositionedDeclaration _ _ _ d) = isImportDecl d
 isImportDecl _ = False
 
 -- |
 -- Test if a declaration is a data type foreign import
 --
-isExternDataDecl :: Declaration -> Bool
+isExternDataDecl :: Declaration ka ta va-> Bool
 isExternDataDecl ExternDataDeclaration{} = True
-isExternDataDecl (PositionedDeclaration _ _ d) = isExternDataDecl d
+isExternDataDecl (PositionedDeclaration _ _ _ d) = isExternDataDecl d
 isExternDataDecl _ = False
 
 -- |
 -- Test if a declaration is a foreign kind import
 --
-isExternKindDecl :: Declaration -> Bool
+isExternKindDecl :: Declaration ka ta va-> Bool
 isExternKindDecl ExternKindDeclaration{} = True
-isExternKindDecl (PositionedDeclaration _ _ d) = isExternKindDecl d
+isExternKindDecl (PositionedDeclaration _ _ _ d) = isExternKindDecl d
 isExternKindDecl _ = False
 
 -- |
 -- Test if a declaration is a fixity declaration
 --
-isFixityDecl :: Declaration -> Bool
+isFixityDecl :: Declaration ka ta va-> Bool
 isFixityDecl FixityDeclaration{} = True
-isFixityDecl (PositionedDeclaration _ _ d) = isFixityDecl d
+isFixityDecl (PositionedDeclaration _ _ _ d) = isFixityDecl d
 isFixityDecl _ = False
 
-getFixityDecl :: Declaration -> Maybe (Either ValueFixity TypeFixity)
-getFixityDecl (FixityDeclaration fixity) = Just fixity
-getFixityDecl (PositionedDeclaration _ _ d) = getFixityDecl d
+getFixityDecl :: Declaration ka ta va-> Maybe (Either ValueFixity TypeFixity)
+getFixityDecl (FixityDeclaration _ fixity) = Just fixity
+getFixityDecl (PositionedDeclaration _ _ _ d) = getFixityDecl d
 getFixityDecl _ = Nothing
 
 -- |
 -- Test if a declaration is a foreign import
 --
-isExternDecl :: Declaration -> Bool
+isExternDecl :: Declaration ka ta va-> Bool
 isExternDecl ExternDeclaration{} = True
-isExternDecl (PositionedDeclaration _ _ d) = isExternDecl d
+isExternDecl (PositionedDeclaration _ _ _ d) = isExternDecl d
 isExternDecl _ = False
 
 -- |
 -- Test if a declaration is a type class instance declaration
 --
-isTypeClassInstanceDeclaration :: Declaration -> Bool
+isTypeClassInstanceDeclaration :: Declaration ka ta va-> Bool
 isTypeClassInstanceDeclaration TypeInstanceDeclaration{} = True
-isTypeClassInstanceDeclaration (PositionedDeclaration _ _ d) = isTypeClassInstanceDeclaration d
+isTypeClassInstanceDeclaration (PositionedDeclaration _ _ _ d) = isTypeClassInstanceDeclaration d
 isTypeClassInstanceDeclaration _ = False
 
 -- |
 -- Test if a declaration is a type class declaration
 --
-isTypeClassDeclaration :: Declaration -> Bool
+isTypeClassDeclaration :: Declaration ka ta va-> Bool
 isTypeClassDeclaration TypeClassDeclaration{} = True
-isTypeClassDeclaration (PositionedDeclaration _ _ d) = isTypeClassDeclaration d
+isTypeClassDeclaration (PositionedDeclaration _ _ _ d) = isTypeClassDeclaration d
 isTypeClassDeclaration _ = False
 
 -- |
 -- Recursively flatten data binding groups in the list of declarations
-flattenDecls :: [Declaration] -> [Declaration]
+flattenDecls :: [Declaration ka ta va] -> [Declaration ka ta va]
 flattenDecls = concatMap flattenOne
-    where flattenOne :: Declaration -> [Declaration]
-          flattenOne (DataBindingGroupDeclaration decls) = concatMap flattenOne decls
-          flattenOne d = [d]
+    where
+      flattenOne :: Declaration ka ta va-> [Declaration ka ta va]
+      flattenOne (DataBindingGroupDeclaration _ decls) = concatMap flattenOne decls
+      flattenOne d = [d]
 
 -- |
 -- A guard is just a boolean-valued expression that appears alongside a set of binders
 --
-data Guard = ConditionGuard Expr
-           | PatternGuard Binder Expr
-           deriving (Show)
+data Guard ka ta va
+  = ConditionGuard va (Expr ka ta va)
+  | PatternGuard va (Binder ka ta va) (Expr ka ta va)
+  deriving (Show)
 
 -- |
 -- The right hand side of a binder in value declarations
 -- and case expressions.
-data GuardedExpr = GuardedExpr [Guard] Expr
-                 deriving (Show)
+data GuardedExpr ka ta va = GuardedExpr va [Guard ka ta va] (Expr ka ta va)
+  deriving (Show)
 
-pattern MkUnguarded :: Expr -> GuardedExpr
-pattern MkUnguarded e = GuardedExpr [] e
+pattern MkUnguarded :: va -> Expr ka ta va -> GuardedExpr ka ta va
+pattern MkUnguarded ann e = GuardedExpr ann [] e
 
 -- |
 -- Data type for expressions and terms
 --
-data Expr
+data Expr ka ta va
   -- |
   -- A literal value
   --
-  = Literal (Literal Expr)
+  = Literal va (Literal (Expr ka ta va))
   -- |
   -- A prefix -, will be desugared
   --
-  | UnaryMinus Expr
+  | UnaryMinus va (Expr ka ta va)
   -- |
   -- Binary operator application. During the rebracketing phase of desugaring, this data constructor
   -- will be removed.
   --
-  | BinaryNoParens Expr Expr Expr
+  | BinaryNoParens va (Expr ka ta va) (Expr ka ta va) (Expr ka ta va)
   -- |
   -- Explicit parentheses. During the rebracketing phase of desugaring, this data constructor
   -- will be removed.
@@ -608,69 +624,69 @@ data Expr
   -- Note: although it seems this constructor is not used, it _is_ useful, since it prevents
   -- certain traversals from matching.
   --
-  | Parens Expr
+  | Parens va (Expr ka ta va)
   -- |
   -- An record property accessor expression (e.g. `obj.x` or `_.x`).
   -- Anonymous arguments will be removed during desugaring and expanded
   -- into a lambda that reads a property from a record.
   --
-  | Accessor PSString Expr
+  | Accessor va PSString (Expr ka ta va)
   -- |
   -- Partial record update
   --
-  | ObjectUpdate Expr [(PSString, Expr)]
+  | ObjectUpdate va (Expr ka ta va) [(PSString, Expr ka ta va)]
   -- |
   -- Object updates with nested support: `x { foo { bar = e } }`
   -- Replaced during desugaring into a `Let` and nested `ObjectUpdate`s
   --
-  | ObjectUpdateNested Expr (PathTree Expr)
+  | ObjectUpdateNested va (Expr ka ta va) (PathTree (Expr ka ta va))
   -- |
   -- Function introduction
   --
-  | Abs Binder Expr
+  | Abs va (Binder ka ta va) (Expr ka ta va)
   -- |
   -- Function application
   --
-  | App Expr Expr
+  | App va (Expr ka ta va) (Expr ka ta va)
   -- |
   -- Variable
   --
-  | Var (Qualified Ident)
+  | Var va (Qualified Ident)
   -- |
   -- An operator. This will be desugared into a function during the "operators"
   -- phase of desugaring.
   --
-  | Op (Qualified (OpName 'ValueOpName))
+  | Op va (Qualified (OpName 'ValueOpName))
   -- |
   -- Conditional (if-then-else expression)
   --
-  | IfThenElse Expr Expr Expr
+  | IfThenElse va (Expr ka ta va) (Expr ka ta va) (Expr ka ta va)
   -- |
   -- A data constructor
   --
-  | Constructor (Qualified (ProperName 'ConstructorName))
+  | Constructor va (Qualified (ProperName 'ConstructorName))
   -- |
   -- A case expression. During the case expansion phase of desugaring, top-level binders will get
   -- desugared into case expressions, hence the need for guards and multiple binders per branch here.
   --
-  | Case [Expr] [CaseAlternative]
+  | Case va [Expr ka ta va] [CaseAlternative ka ta va]
   -- |
   -- A value with a type annotation
   --
-  | TypedValue Bool Expr Type
+  | TypedValue va Bool (Expr ka ta va) (Type ka ta)
   -- |
   -- A let binding
   --
-  | Let [Declaration] Expr
+  | Let va [Declaration ka ta va] (Expr ka ta va)
   -- |
   -- A do-notation block
   --
-  | Do [DoNotationElement]
+  | Do va [DoNotationElement ka ta va]
   -- |
   -- An application of a typeclass dictionary constructor. The value should be
   -- an ObjectLiteral.
   --
-  | TypeClassDictionaryConstructorApp (Qualified (ProperName 'ClassName)) Expr
+  | TypeClassDictionaryConstructorApp va (Qualified (ProperName 'ClassName)) (Expr ka ta va)
   -- |
   -- A placeholder for a type class dictionary to be inserted later. At the end of type checking, these
   -- placeholders will be replaced with actual expressions representing type classes dictionaries which
@@ -678,65 +694,65 @@ data Expr
   -- at superclass implementations when searching for a dictionary, the type class name and
   -- instance type, and the type class dictionaries in scope.
   --
-  | TypeClassDictionary Constraint
-                        (M.Map (Maybe ModuleName) (M.Map (Qualified (ProperName 'ClassName)) (M.Map (Qualified Ident) NamedDict)))
-                        [ErrorMessageHint]
+  | TypeClassDictionary
+      va
+      (Constraint ka ta)
+      (M.Map (Maybe ModuleName) (M.Map (Qualified (ProperName 'ClassName)) (M.Map (Qualified Ident) NamedDict)))
+      [ErrorMessageHint]
   -- |
   -- A typeclass dictionary accessor, the implementation is left unspecified until CoreFn desugaring.
   --
-  | TypeClassDictionaryAccessor (Qualified (ProperName 'ClassName)) Ident
+  | TypeClassDictionaryAccessor va (Qualified (ProperName 'ClassName)) Ident
   -- |
   -- A placeholder for a superclass dictionary to be turned into a TypeClassDictionary during typechecking
   --
-  | DeferredDictionary (Qualified (ProperName 'ClassName)) [Type]
+  | DeferredDictionary va (Qualified (ProperName 'ClassName)) [Type ka ta]
   -- |
   -- A placeholder for an anonymous function argument
   --
-  | AnonymousArgument
+  | AnonymousArgument va
   -- |
   -- A typed hole that will be turned into a hint/error duing typechecking
   --
-  | Hole Text
+  | Hole va Text
   -- |
   -- A value with source position information
   --
-  | PositionedValue SourceSpan [Comment] Expr
+  | PositionedValue va SourceSpan [Comment] (Expr ka ta va)
   deriving (Show)
 
 -- |
 -- An alternative in a case statement
 --
-data CaseAlternative = CaseAlternative
-  { -- |
-    -- A collection of binders with which to match the inputs
-    --
-    caseAlternativeBinders :: [Binder]
-    -- |
-    -- The result expression or a collect of guarded expressions
-    --
-  , caseAlternativeResult :: [GuardedExpr]
+data CaseAlternative ka ta va = CaseAlternative
+  { caseAlternativeAnn :: va
+  -- ^ The annotation for the caseAlternative
+  , caseAlternativeBinders :: [Binder ka ta va]
+  -- ^ A collection of binders with which to match the inputs
+  , caseAlternativeResult :: [GuardedExpr ka ta va]
+  -- ^ The result expression or a collect of guarded expressions
   } deriving (Show)
 
 -- |
 -- A statement in a do-notation block
 --
-data DoNotationElement
+data DoNotationElement ka ta va
   -- |
   -- A monadic value without a binder
   --
-  = DoNotationValue Expr
+  = DoNotationValue va (Expr ka ta va)
   -- |
   -- A monadic value with a binder
   --
-  | DoNotationBind Binder Expr
+  | DoNotationBind va (Binder ka ta va) (Expr ka ta va)
   -- |
   -- A let statement, i.e. a pure value with a binder
   --
-  | DoNotationLet [Declaration]
+  | DoNotationLet va [Declaration ka ta va]
   -- |
   -- A do notation element with source position information
   --
-  | PositionedDoNotationElement SourceSpan [Comment] DoNotationElement
+  | PositionedDoNotationElement va SourceSpan [Comment] (DoNotationElement ka ta va)
   deriving (Show)
 
 
@@ -775,10 +791,10 @@ newtype AssocList k t = AssocList { runAssocList :: [(k, t)] }
 $(deriveJSON (defaultOptions { sumEncoding = ObjectWithSingleField }) ''DeclarationRef)
 $(deriveJSON (defaultOptions { sumEncoding = ObjectWithSingleField }) ''ImportDeclarationType)
 
-isTrueExpr :: Expr -> Bool
-isTrueExpr (Literal (BooleanLiteral True)) = True
-isTrueExpr (Var (Qualified (Just (ModuleName [ProperName "Prelude"])) (Ident "otherwise"))) = True
-isTrueExpr (Var (Qualified (Just (ModuleName [ProperName "Data", ProperName "Boolean"])) (Ident "otherwise"))) = True
-isTrueExpr (TypedValue _ e _) = isTrueExpr e
-isTrueExpr (PositionedValue _ _ e) = isTrueExpr e
+isTrueExpr :: Expr ka ta va -> Bool
+isTrueExpr (Literal _ (BooleanLiteral True)) = True
+isTrueExpr (Var _ (Qualified (Just (ModuleName [ProperName "Prelude"])) (Ident "otherwise"))) = True
+isTrueExpr (Var _ (Qualified (Just (ModuleName [ProperName "Data", ProperName "Boolean"])) (Ident "otherwise"))) = True
+isTrueExpr (TypedValue _ _ e _) = isTrueExpr e
+isTrueExpr (PositionedValue _ _ _ e) = isTrueExpr e
 isTrueExpr _ = False
