@@ -143,3 +143,9 @@ withSourceSpan f p = do
         _ -> Nothing
   let sp = SourceSpan (P.sourceName start) (toSourcePos start) (toSourcePos $ fromMaybe end end')
   return $ f sp comments x
+
+withSourceSpan'
+  :: (SourceSpan -> a -> b)
+  -> P.Parsec [PositionedToken] u a
+  -> P.Parsec [PositionedToken] u b
+withSourceSpan' f = withSourceSpan (\ss _ -> f ss)

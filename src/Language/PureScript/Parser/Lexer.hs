@@ -3,8 +3,9 @@
 --
 module Language.PureScript.Parser.Lexer
   ( PositionedToken(..)
-  , Token()
-  , TokenParser()
+  , Token
+  , TokenParser
+  , TokenOperator
   , lex
   , lexLenient
   , anyToken
@@ -80,6 +81,7 @@ import Language.PureScript.Parser.State
 import Language.PureScript.PSString (PSString)
 
 import qualified Text.Parsec as P
+import qualified Text.Parsec.Expr as P
 import qualified Text.Parsec.Token as PT
 
 data Token
@@ -310,6 +312,7 @@ tokenParser :: PT.GenTokenParser Text u Identity
 tokenParser = PT.makeTokenParser langDef
 
 type TokenParser a = P.Parsec [PositionedToken] ParseState a
+type TokenOperator a = P.Operator [PositionedToken] ParseState Identity a
 
 anyToken :: TokenParser PositionedToken
 anyToken = P.token (T.unpack . prettyPrintToken . ptToken) ptSourcePos Just

@@ -122,7 +122,9 @@ instance NFData ConstraintData
 
 -- | A typeclass constraint
 data Constraint a = Constraint
-  { constraintClass :: Qualified (ProperName 'ClassName)
+  { constraintAnn :: a
+  -- ^ constraint annotation
+  , constraintClass :: Qualified (ProperName 'ClassName)
   -- ^ constraint class name
   , constraintArgs  :: [Type a]
   -- ^ type arguments
@@ -154,8 +156,8 @@ rowToSortedList :: Type a -> ([(Label, Type a)], Type a)
 rowToSortedList = first (sortBy (comparing fst)) . rowToList
 
 -- | Convert a list of labels and types to a row
-rowFromList :: ([(Label, Type a)], Type a) -> a -> Type a
-rowFromList (xs, r) ann = foldr (uncurry (RCons ann)) r xs
+rowFromList :: ([(a, Label, Type a)], Type a) -> Type a
+rowFromList (xs, r) = foldr (\(ann, l, ty) -> RCons ann l ty) r xs
 
 -- | Check whether a type is a monotype
 isMonoType :: Type a -> Bool
@@ -165,8 +167,8 @@ isMonoType (KindedType _ t _) = isMonoType t
 isMonoType _ = True
 
 -- | Universally quantify a type
-mkForAll :: [(a, Text)] -> Type a -> Type a
-mkForAll args ty = foldl (\t (ann, arg) -> ForAll ann arg t Nothing) ty args
+mkForAll :: a -> [Text] -> Type a -> Type a
+mkForAll ann args ty = foldl (\t arg -> ForAll ann arg t Nothing) ty args
 
 -- | Replace a type variable, taking into account variable shadowing
 replaceTypeVars :: Text -> Type a -> Type a -> Type a
@@ -183,7 +185,7 @@ replaceAllTypeVars = go []
         | v `elem` keys = go bs (filter ((/= v) . fst) m) f
         | v `elem` usedVars =
             let v' = genName v (keys <> bs <> usedVars)
-                t' = go bs [(v, TypeVar (typeAnn t) v')] t -- TODO: correct annotation?
+                t' = go bs [(v, TypeVar (typeAnn t) v')] t -- TODO-ann: correct annotation?
             in ForAll ann v' (go (v' : bs) m t') sco
         | otherwise = ForAll ann v (go (v : bs) m t) sco
       where
@@ -227,7 +229,7 @@ freeTypeVariables = ordNub . go []
 
 -- | Universally quantify over all type variables appearing free in a type
 quantify :: Type a -> Type a
-quantify ty = foldr (\arg t -> ForAll (typeAnn t) arg t Nothing) ty $ freeTypeVariables ty -- TODO: correct annotation?
+quantify ty = foldr (\arg t -> ForAll (typeAnn t) arg t Nothing) ty $ freeTypeVariables ty -- TODO-ann: correct annotation?
 
 -- | Move all universal quantifiers to the front of a type
 moveQuantifiersToFront :: Type a -> Type a

@@ -136,7 +136,7 @@ makeTypeClassData args m s deps = TypeClassData args m s deps determinedArgs cov
     contributingDeps = M.fromListWith (++) $ identities ++ do
       fd <- deps
       src <- fdDeterminers fd
-      (src, fdDetermined fd) : map (, []) (fdDetermined fd)
+      (src, fdDetermined fd) : fmap (, []) (fdDetermined fd)
 
     -- build a graph of which arguments determine other arguments
     (depGraph, fromVertex, fromKey) = G.graphFromEdges ((\(n, v) -> (n, n, ordNub v)) <$> M.toList contributingDeps)
@@ -275,49 +275,49 @@ kindSymbol = primKind C.symbol
 primAnn :: TypeAnn
 primAnn = SourceSpan "<prim>" (SourcePos 0 0) (SourcePos 0 0)
 
--- | Construct a type in the Prim module
-primTy :: Text -> Type TypeAnn
-primTy = TypeConstructor primAnn . primName
+-- | Construct a type from the Prim module
+primTy :: Text -> a -> Type a
+primTy name ann = TypeConstructor ann (primName name)
 
 -- | Type constructor for functions
-tyFunction :: Type TypeAnn
+tyFunction :: a -> Type a
 tyFunction = primTy "Function"
 
 -- | Type constructor for strings
-tyString :: Type TypeAnn
+tyString :: a -> Type a
 tyString = primTy "String"
 
 -- | Type constructor for strings
-tyChar :: Type TypeAnn
+tyChar :: a -> Type a
 tyChar = primTy "Char"
 
 -- | Type constructor for numbers
-tyNumber :: Type TypeAnn
+tyNumber :: a -> Type a
 tyNumber = primTy "Number"
 
 -- | Type constructor for integers
-tyInt :: Type TypeAnn
+tyInt :: a -> Type a
 tyInt = primTy "Int"
 
 -- | Type constructor for booleans
-tyBoolean :: Type TypeAnn
+tyBoolean :: a -> Type a
 tyBoolean = primTy "Boolean"
 
 -- | Type constructor for arrays
-tyArray :: Type TypeAnn
+tyArray :: a -> Type a
 tyArray = primTy "Array"
 
 -- | Type constructor for records
-tyRecord :: Type TypeAnn
+tyRecord :: a -> Type a
 tyRecord = primTy "Record"
 
 -- | Check whether a type is a record
 isObject :: Type a -> Bool
-isObject = isTypeOrApplied (void tyRecord) . void
+isObject = isTypeOrApplied (tyRecord ()) . void
 
 -- | Check whether a type is a function
 isFunction :: Type a -> Bool
-isFunction = isTypeOrApplied (void tyFunction) . void
+isFunction = isTypeOrApplied (tyFunction ()) . void
 
 isTypeOrApplied :: Type a -> Type b -> Bool
 isTypeOrApplied t1 (TypeApp _ t2 _) = void t1 == void t2
@@ -325,7 +325,7 @@ isTypeOrApplied t1 t2 = void t1 == void t2
 
 -- | Smart constructor for function types
 function :: TypeAnn -> Type TypeAnn -> Type TypeAnn -> Type TypeAnn
-function ann t1 = TypeApp ann (TypeApp ann tyFunction t1)
+function ann t1 = TypeApp ann (TypeApp ann (tyFunction ann) t1) -- TODO-ann: is repeating the annotation correct here?
 
 -- | The primitive kinds
 primKinds :: S.Set (Qualified (ProperName 'KindName))
