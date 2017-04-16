@@ -14,7 +14,7 @@ import Language.PureScript.Types
 -- |
 -- Data type for binders
 --
-data Binder ta va
+data Binder ka ta va
   -- |
   -- Wildcard binder
   --
@@ -22,7 +22,7 @@ data Binder ta va
   -- |
   -- A binder which matches a literal
   --
-  | LiteralBinder va (Literal (Binder ta va))
+  | LiteralBinder va (Literal (Binder ka ta va))
   -- |
   -- A binder which binds an identifier
   --
@@ -30,7 +30,7 @@ data Binder ta va
   -- |
   -- A binder which matches a data constructor
   --
-  | ConstructorBinder va (Qualified (ProperName 'ConstructorName)) [Binder ta va]
+  | ConstructorBinder va (Qualified (ProperName 'ConstructorName)) [Binder ka ta va]
   -- |
   -- A operator alias binder. During the rebracketing phase of desugaring,
   -- this data constructor will be removed.
@@ -40,7 +40,7 @@ data Binder ta va
   -- Binary operator application. During the rebracketing phase of desugaring,
   -- this data constructor will be removed.
   --
-  | BinaryNoParensBinder va (Binder ta va) (Binder ta va) (Binder ta va)
+  | BinaryNoParensBinder va (Binder ka ta va) (Binder ka ta va) (Binder ka ta va)
   -- |
   -- Explicit parentheses. During the rebracketing phase of desugaring, this
   -- data constructor will be removed.
@@ -48,25 +48,25 @@ data Binder ta va
   -- Note: although it seems this constructor is not used, it _is_ useful,
   -- since it prevents certain traversals from matching.
   --
-  | ParensInBinder va (Binder ta va)
+  | ParensInBinder va (Binder ka ta va)
   -- |
   -- A binder which binds its input to an identifier
   --
-  | NamedBinder va Ident (Binder ta va)
+  | NamedBinder va Ident (Binder ka ta va)
   -- |
   -- A binder with source position information
   --
-  | PositionedBinder va SourceSpan [Comment] (Binder ta va)
+  | PositionedBinder va SourceSpan [Comment] (Binder ka ta va)
   -- |
   -- A binder with a type annotation
   --
-  | TypedBinder va (Type ta) (Binder ta va)
+  | TypedBinder va (Type ka ta) (Binder ka ta va)
   deriving (Show, Eq, Ord)
 
 -- |
 -- Collect all names introduced in binders in an expression
 --
-binderNames :: Binder ta va -> [Ident]
+binderNames :: Binder ka ta va -> [Ident]
 binderNames = go []
   where
     go ns (LiteralBinder _ b) = lit ns b
@@ -82,7 +82,7 @@ binderNames = go []
     lit ns (ArrayLiteral bs) = foldl go ns bs
     lit ns _ = ns
 
-isIrrefutable :: Binder ta va -> Bool
+isIrrefutable :: Binder ka ta va -> Bool
 isIrrefutable NullBinder{} = True
 isIrrefutable VarBinder{} = True
 isIrrefutable (PositionedBinder _ _ _ b) = isIrrefutable b
