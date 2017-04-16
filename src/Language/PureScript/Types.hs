@@ -83,7 +83,7 @@ data Type a
   -- Note: although it seems this constructor is not used, it _is_ useful,
   -- since it prevents certain traversals from matching.
   | ParensInType a (Type a)
-  deriving (Show, Eq, Ord, Generic)
+  deriving (Show, Eq, Ord, Generic, Functor)
 
 instance NFData a => NFData (Type a)
 
@@ -128,7 +128,7 @@ data Constraint a = Constraint
   -- ^ type arguments
   , constraintData  :: Maybe ConstraintData
   -- ^ additional data relevant to this constraint
-  } deriving (Show, Eq, Ord, Generic)
+  } deriving (Show, Eq, Ord, Generic, Functor)
 
 instance NFData a => NFData (Constraint a)
 
