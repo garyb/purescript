@@ -40,55 +40,55 @@ instance NFData SkolemScope
 -- |
 -- The type of types
 --
-data Type a
+data Type ka ta
   -- | A unification variable of type Type
-  = TUnknown a Int
+  = TUnknown ta Int
   -- | A named type variable
-  | TypeVar a Text
+  | TypeVar ta Text
   -- | A type-level string
-  | TypeLevelString a PSString
+  | TypeLevelString ta PSString
   -- | A type wildcard, as would appear in a partial type synonym
-  | TypeWildcard a SourceSpan
+  | TypeWildcard ta SourceSpan
   -- | A type constructor
-  | TypeConstructor a (Qualified (ProperName 'TypeName))
+  | TypeConstructor ta (Qualified (ProperName 'TypeName))
   -- | A type operator. This will be desugared into a type constructor during the
   -- "operators" phase of desugaring.
-  | TypeOp a (Qualified (OpName 'TypeOpName))
+  | TypeOp ta (Qualified (OpName 'TypeOpName))
   -- | A type application
-  | TypeApp a (Type a) (Type a)
+  | TypeApp ta (Type ka ta) (Type ka ta)
   -- | Forall quantifier
-  | ForAll a Text (Type a) (Maybe SkolemScope)
+  | ForAll ta Text (Type ka ta) (Maybe SkolemScope)
   -- | A type with a set of type class constraints
-  | ConstrainedType a (Constraint a) (Type a)
+  | ConstrainedType ta (Constraint ka ta) (Type ka ta)
   -- | A skolem constant
-  | Skolem a Text Int SkolemScope (Maybe SourceSpan)
+  | Skolem ta Text Int SkolemScope (Maybe SourceSpan)
   -- | An empty row
-  | REmpty a
+  | REmpty ta
   -- | A non-empty row
-  | RCons a Label (Type a) (Type a)
+  | RCons ta Label (Type ka ta) (Type ka ta)
   -- | A type with a kind annotation
-  | KindedType a (Type a) Kind
+  | KindedType ta (Type ka ta) (Kind ka)
   -- | A placeholder used in pretty printing
-  | PrettyPrintFunction a (Type a) (Type a)
+  | PrettyPrintFunction ta (Type ka ta) (Type ka ta)
   -- | A placeholder used in pretty printing
-  | PrettyPrintObject a (Type a)
+  | PrettyPrintObject ta (Type ka ta)
   -- | A placeholder used in pretty printing
-  | PrettyPrintForAll a [Text] (Type a)
+  | PrettyPrintForAll ta [Text] (Type ka ta)
   -- | Binary operator application. During the rebracketing phase of desugaring,
   -- this data constructor will be removed.
-  | BinaryNoParensType a (Type a) (Type a) (Type a)
+  | BinaryNoParensType ta (Type ka ta) (Type ka ta) (Type ka ta)
   -- | Explicit parentheses. During the rebracketing phase of desugaring, this
   -- data constructor will be removed.
   --
   -- Note: although it seems this constructor is not used, it _is_ useful,
   -- since it prevents certain traversals from matching.
-  | ParensInType a (Type a)
+  | ParensInType ta (Type ka ta)
   deriving (Show, Eq, Ord, Generic, Functor)
 
-instance NFData a => NFData (Type a)
+instance (NFData ka, NFData ta) => NFData (Type ka ta)
 
 -- | Extracts the annotation from a type.
-typeAnn :: Type a -> a
+typeAnn :: Type ka ta -> ta
 typeAnn (TUnknown ann _) = ann
 typeAnn (TypeVar ann _) = ann
 typeAnn (TypeLevelString ann _) = ann
@@ -121,64 +121,65 @@ data ConstraintData
 instance NFData ConstraintData
 
 -- | A typeclass constraint
-data Constraint a = Constraint
-  { constraintAnn :: a
+data Constraint ka ta = Constraint
+  { constraintAnn :: ta
   -- ^ constraint annotation
   , constraintClass :: Qualified (ProperName 'ClassName)
   -- ^ constraint class name
-  , constraintArgs  :: [Type a]
+  , constraintArgs  :: [Type ka ta]
   -- ^ type arguments
   , constraintData  :: Maybe ConstraintData
   -- ^ additional data relevant to this constraint
   } deriving (Show, Eq, Ord, Generic, Functor)
 
-instance NFData a => NFData (Constraint a)
+instance (NFData ka, NFData ta) => NFData (Constraint ka ta)
 
-mapConstraintArgs :: ([Type a] -> [Type a]) -> Constraint a -> Constraint a
+mapConstraintArgs :: ([Type ka ta] -> [Type ka ta]) -> Constraint ka ta -> Constraint ka ta
 mapConstraintArgs f c = c { constraintArgs = f (constraintArgs c) }
 
-overConstraintArgs :: Functor f => ([Type a] -> f [Type a]) -> Constraint a -> f (Constraint a)
+overConstraintArgs :: Functor f => ([Type ka ta] -> f [Type ka ta]) -> Constraint ka ta -> f (Constraint ka ta)
 overConstraintArgs f c = (\args -> c { constraintArgs = args }) <$> f (constraintArgs c)
 
-$(A.deriveJSON A.defaultOptions ''Type)
-$(A.deriveJSON A.defaultOptions ''Constraint)
+-- TODO-ann: see Kinds for problem with deriving `fromJSON` here :/
+-- $(A.deriveJSON A.defaultOptions ''Type)
+-- $(A.deriveJSON A.defaultOptions ''Constraint)
 $(A.deriveJSON A.defaultOptions ''ConstraintData)
 
 -- | Convert a row to a list of pairs of labels and types
-rowToList :: Type a -> ([(Label, Type a)], Type a)
+rowToList :: Type ka ta -> ([(Label, Type ka ta)], Type ka ta)
 rowToList = go
   where
     go (RCons _ name ty row) = first ((name, ty) :) (rowToList row)
     go r = ([], r)
 
 -- | Convert a row to a list of pairs of labels and types, sorted by the labels.
-rowToSortedList :: Type a -> ([(Label, Type a)], Type a)
+rowToSortedList :: Type ka ta -> ([(Label, Type ka ta)], Type ka ta)
 rowToSortedList = first (sortBy (comparing fst)) . rowToList
 
 -- | Convert a list of labels and types to a row
-rowFromList :: ([(a, Label, Type a)], Type a) -> Type a
+rowFromList :: ([(ta, Label, Type ka ta)], Type ka ta) -> Type ka ta
 rowFromList (xs, r) = foldr (\(ann, l, ty) -> RCons ann l ty) r xs
 
 -- | Check whether a type is a monotype
-isMonoType :: Type a -> Bool
+isMonoType :: Type ka ta -> Bool
 isMonoType ForAll{} = False
 isMonoType (ParensInType _ t) = isMonoType t
 isMonoType (KindedType _ t _) = isMonoType t
 isMonoType _ = True
 
 -- | Universally quantify a type
-mkForAll :: a -> [Text] -> Type a -> Type a
+mkForAll :: ta -> [Text] -> Type ka ta -> Type ka ta
 mkForAll ann args ty = foldl (\t arg -> ForAll ann arg t Nothing) ty args
 
 -- | Replace a type variable, taking into account variable shadowing
-replaceTypeVars :: Text -> Type a -> Type a -> Type a
+replaceTypeVars :: Text -> Type ka ta -> Type ka ta -> Type ka ta
 replaceTypeVars v r = replaceAllTypeVars [(v, r)]
 
 -- | Replace named type variables with types
-replaceAllTypeVars :: forall a. [(Text, Type a)] -> Type a -> Type a
+replaceAllTypeVars :: [(Text, Type ka ta)] -> Type ka ta -> Type ka ta
 replaceAllTypeVars = go []
   where
-    go :: [Text] -> [(Text, Type a)] -> Type a -> Type a
+    go :: [Text] -> [(Text, Type ka ta)] -> Type ka ta -> Type ka ta
     go _  m tv@(TypeVar _ v) = fromMaybe tv (v `lookup` m)
     go bs m (TypeApp ann t1 t2) = TypeApp ann (go bs m t1) (go bs m t2)
     go bs m f@(ForAll ann v t sco)
@@ -206,17 +207,17 @@ replaceAllTypeVars = go []
                | otherwise = orig <> T.pack (show n)
 
 -- | Collect all type variables appearing in a type
-usedTypeVariables :: Type a -> [Text]
+usedTypeVariables :: Type ka ta -> [Text]
 usedTypeVariables = ordNub . everythingOnTypes (++) go
   where
     go (TypeVar _ v) = [v]
     go _ = []
 
 -- | Collect all free type variables appearing in a type
-freeTypeVariables :: forall a. Type a -> [Text]
+freeTypeVariables :: Type ka ta -> [Text]
 freeTypeVariables = ordNub . go []
   where
-    go :: [Text] -> Type a -> [Text]
+    go :: [Text] -> Type ka ta -> [Text]
     go bound (TypeVar _ v) | v `notElem` bound = [v]
     go bound (TypeApp _ t1 t2) = go bound t1 <> go bound t2
     go bound (ForAll _ v t _) = go (v : bound) t
@@ -228,11 +229,11 @@ freeTypeVariables = ordNub . go []
     go _ _ = []
 
 -- | Universally quantify over all type variables appearing free in a type
-quantify :: Type a -> Type a
+quantify :: Type ka ta -> Type ka ta
 quantify ty = foldr (\arg t -> ForAll (typeAnn t) arg t Nothing) ty $ freeTypeVariables ty -- TODO-ann: correct annotation?
 
 -- | Move all universal quantifiers to the front of a type
-moveQuantifiersToFront :: Type a -> Type a
+moveQuantifiersToFront :: Type ka ta -> Type ka ta
 moveQuantifiersToFront = go [] []
   where
     go qs cs (ForAll ann q ty sco) = go ((ann, q, sco) : qs) cs ty
@@ -240,14 +241,14 @@ moveQuantifiersToFront = go [] []
     go qs cs ty = foldl (\ty' (ann, q, sco) -> ForAll ann q ty' sco) (foldl (\ty' (ann, c) -> ConstrainedType ann c ty') ty cs) qs
 
 -- | Check if a type contains wildcards
-containsWildcards :: Type a -> Bool
+containsWildcards :: Type ka ta -> Bool
 containsWildcards = everythingOnTypes (||) go
   where
-    go :: Type a -> Bool
+    go :: Type ka ta -> Bool
     go TypeWildcard{} = True
     go _ = False
 
-everywhereOnTypes :: (Type a -> Type a) -> Type a -> Type a
+everywhereOnTypes :: (Type ka ta -> Type ka ta) -> Type ka ta -> Type ka ta
 everywhereOnTypes f = go
   where
     go (TypeApp ann t1 t2) = f (TypeApp ann (go t1) (go t2))
@@ -262,7 +263,7 @@ everywhereOnTypes f = go
     go (ParensInType ann t) = f (ParensInType ann (go t))
     go other = f other
 
-everywhereOnTypesTopDown :: (Type a -> Type a) -> Type a -> Type a
+everywhereOnTypesTopDown :: (Type ka ta -> Type ka ta) -> Type ka ta -> Type ka ta
 everywhereOnTypesTopDown f = go . f
   where
     go (TypeApp ann t1 t2) = TypeApp ann (go (f t1)) (go (f t2))
@@ -277,7 +278,7 @@ everywhereOnTypesTopDown f = go . f
     go (ParensInType ann t) = ParensInType ann (go (f t))
     go other = f other
 
-everywhereOnTypesM :: Monad m => (Type a -> m (Type a)) -> Type a -> m (Type a)
+everywhereOnTypesM :: Monad m => (Type ka ta -> m (Type ka ta)) -> Type ka ta -> m (Type ka ta)
 everywhereOnTypesM f = go
   where
     go (TypeApp ann t1 t2) = (TypeApp ann <$> go t1 <*> go t2) >>= f
@@ -292,7 +293,7 @@ everywhereOnTypesM f = go
     go (ParensInType ann t) = (ParensInType ann <$> go t) >>= f
     go other = f other
 
-everywhereOnTypesTopDownM :: Monad m => (Type a -> m (Type a)) -> Type a -> m (Type a)
+everywhereOnTypesTopDownM :: Monad m => (Type ka ta -> m (Type ka ta)) -> Type ka ta -> m (Type ka ta)
 everywhereOnTypesTopDownM f = go <=< f
   where
     go (TypeApp ann t1 t2) = TypeApp ann <$> (f t1 >>= go) <*> (f t2 >>= go)
@@ -307,7 +308,7 @@ everywhereOnTypesTopDownM f = go <=< f
     go (ParensInType ann t) = ParensInType ann <$> (f t >>= go)
     go other = f other
 
-everythingOnTypes :: (r -> r -> r) -> (Type a -> r) -> Type a -> r
+everythingOnTypes :: (r -> r -> r) -> (Type ka ta -> r) -> Type ka ta -> r
 everythingOnTypes (<+>) f = go
   where
     go t@(TypeApp _ t1 t2) = f t <+> go t1 <+> go t2
@@ -322,7 +323,7 @@ everythingOnTypes (<+>) f = go
     go t@(ParensInType _ t1) = f t <+> go t1
     go other = f other
 
-everythingWithContextOnTypes :: s -> r -> (r -> r -> r) -> (s -> Type a -> (s, r)) -> Type a -> r
+everythingWithContextOnTypes :: s -> r -> (r -> r -> r) -> (s -> Type ka ta -> (s, r)) -> Type ka ta -> r
 everythingWithContextOnTypes s0 r0 (<+>) f = go' s0
   where
     go' s t = let (s', r) = f s t in r <+> go s' t
