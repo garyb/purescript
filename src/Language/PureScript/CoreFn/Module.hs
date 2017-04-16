@@ -2,6 +2,7 @@ module Language.PureScript.CoreFn.Module where
 
 import Prelude.Compat
 
+import Language.PureScript.AST.Ann
 import Language.PureScript.Comments
 import Language.PureScript.CoreFn.Expr
 import Language.PureScript.Names
@@ -19,4 +20,4 @@ data Module a = Module
   , moduleDecls :: [Bind a]
   } deriving (Show)
 
-type ForeignDecl = (Ident, Type ())
+type ForeignDecl = (Ident, Type KindAnn TypeAnn)
